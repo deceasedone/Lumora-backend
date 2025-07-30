@@ -20,6 +20,7 @@ app.get('/', (req, res) => {
   res.send('Lumora Backend is running!');
 });
 
+// ✅ Use Render's assigned port
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
