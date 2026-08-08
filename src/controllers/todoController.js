@@ -36,15 +36,27 @@ const createTodo = async (req, res) => {
   }
 };
 
-// @desc    Update a todo
+// @desc    Update a todo (partial update — only touches fields actually sent)
 const updateTodo = async (req, res) => {
-  const { task, completed, date } = req.body;
   const { id } = req.params;
+  const fields = [];
+  const values = [];
+  let idx = 1;
+
+  if (req.body.task !== undefined) { fields.push(`task = $${idx++}`); values.push(req.body.task); }
+  if (req.body.completed !== undefined) { fields.push(`completed = $${idx++}`); values.push(req.body.completed); }
+  if (req.body.date !== undefined) { fields.push(`date = $${idx++}`); values.push(req.body.date); }
+
+  if (fields.length === 0) {
+    return res.status(400).json({ message: 'No fields to update' });
+  }
+
+  values.push(id, req.user.id);
 
   try {
     const result = await db.query(
-      'UPDATE todos SET task = $1, completed = $2, date = $3 WHERE id = $4 AND user_id = $5 RETURNING *',
-      [task, completed, date, id, req.user.id]
+      `UPDATE todos SET ${fields.join(', ')} WHERE id = $${idx++} AND user_id = $${idx++} RETURNING *`,
+      values
     );
 
     if (result.rows.length === 0) {
