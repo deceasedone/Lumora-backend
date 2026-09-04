@@ -4,20 +4,27 @@ const {
   getTodos,
   createTodo,
   updateTodo,
+  reorderTodos,
+  rolloverTodos,
+  getRolloverCount,
   deleteTodo,
 } = require('../controllers/todoController');
 const { authenticateToken } = require('../middleware/authMiddleware');
+const { validateBody, schemas, idParam } = require('../middleware/validate');
 
-// Apply the authentication middleware to all routes in this file
 router.use(authenticateToken);
 
-// Define the routes
+router.get('/rollover', getRolloverCount);
+router.post('/rollover', validateBody(schemas.rollover), rolloverTodos);
+router.put('/reorder', validateBody(schemas.reorder), reorderTodos);
+
 router.route('/')
   .get(getTodos)
-  .post(createTodo);
+  .post(validateBody(schemas.createTodo), createTodo);
 
 router.route('/:id')
-  .put(updateTodo)
+  .all(idParam)
+  .put(validateBody(schemas.updateTodo), updateTodo)
   .delete(deleteTodo);
 
-module.exports = router; 
+module.exports = router;
