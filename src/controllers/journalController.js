@@ -5,14 +5,37 @@ const db = require('../config/db');
 // @access  Private
 const getJournalEntries = async (req, res) => {
   try {
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
     const entries = await db.query(
-      'SELECT * FROM journal_entries WHERE user_id = $1 ORDER BY created_at DESC',
-      [req.user.id]
+      `SELECT id, title, content, created_at, updated_at
+       FROM journal_entries WHERE user_id = $1
+       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [req.user.id, limit, offset]
     );
     res.json(entries.rows);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send('Server Error');
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get a single journal entry
+// @route   GET /api/journal/:id
+// @access  Private
+const getJournalEntry = async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT * FROM journal_entries WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Journal entry not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -21,9 +44,6 @@ const getJournalEntries = async (req, res) => {
 // @access  Private
 const createJournalEntry = async (req, res) => {
   const { title, content } = req.body;
-  if (!title || content == null) { // content can be an empty string for a new entry
-    return res.status(400).json({ message: 'Title and content are required' });
-  }
 
   try {
     const newEntry = await db.query(
@@ -33,7 +53,7 @@ const createJournalEntry = async (req, res) => {
     res.status(201).json(newEntry.rows[0]);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send('Server Error');
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -41,13 +61,20 @@ const createJournalEntry = async (req, res) => {
 // @route   PUT /api/journal/:id
 // @access  Private
 const updateJournalEntry = async (req, res) => {
-  const { title, content } = req.body;
   const { id } = req.params;
+  const fields = [];
+  const values = [];
+  let idx = 1;
+
+  if (req.body.title !== undefined) { fields.push(`title = $${idx++}`); values.push(req.body.title); }
+  if (req.body.content !== undefined) { fields.push(`content = $${idx++}`); values.push(req.body.content); }
+
+  values.push(id, req.user.id);
 
   try {
     const updatedEntry = await db.query(
-      'UPDATE journal_entries SET title = $1, content = $2 WHERE id = $3 AND user_id = $4 RETURNING *',
-      [title, content, id, req.user.id]
+      `UPDATE journal_entries SET ${fields.join(', ')} WHERE id = $${idx++} AND user_id = $${idx++} RETURNING *`,
+      values
     );
 
     if (updatedEntry.rows.length === 0) {
@@ -57,7 +84,7 @@ const updateJournalEntry = async (req, res) => {
     res.json(updatedEntry.rows[0]);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send('Server Error');
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -80,12 +107,13 @@ const deleteJournalEntry = async (req, res) => {
     res.json({ message: 'Journal entry removed' });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send('Server Error');
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
 module.exports = {
   getJournalEntries,
+  getJournalEntry,
   createJournalEntry,
   updateJournalEntry,
   deleteJournalEntry,

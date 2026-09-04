@@ -2,22 +2,24 @@ const express = require('express');
 const router = express.Router();
 const {
   getJournalEntries,
+  getJournalEntry,
   createJournalEntry,
   updateJournalEntry,
   deleteJournalEntry,
 } = require('../controllers/journalController');
 const { authenticateToken } = require('../middleware/authMiddleware');
+const { validateBody, schemas, idParam } = require('../middleware/validate');
 
-// Apply the authentication middleware to all routes in this file
 router.use(authenticateToken);
 
-// Define the routes
 router.route('/')
   .get(getJournalEntries)
-  .post(createJournalEntry);
+  .post(validateBody(schemas.createJournal), createJournalEntry);
 
 router.route('/:id')
-  .put(updateJournalEntry)
+  .all(idParam)
+  .get(getJournalEntry)
+  .put(validateBody(schemas.updateJournal), updateJournalEntry)
   .delete(deleteJournalEntry);
 
 module.exports = router;
