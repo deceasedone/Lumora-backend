@@ -3,29 +3,37 @@
 const { Pool } = require('pg');
 const pg = require('pg');
 
-// ========================================================================
-// THE DEFINITIVE TIMEZONE FIX
-// ========================================================================
-// PostgreSQL's 'DATE' type has an OID (Object ID) of 1082.
-// By default, the 'pg' driver parses this type into a local JS Date object,
-// which causes all our timezone problems.
-//
-// This line overrides that default parser. It tells the driver:
-// "When you see a column with type 1082 (DATE), do NOT convert it.
-// Just give me the raw string value as it is in the database."
-//
-// This is the root of the fix.
+// PostgreSQL DATE (OID 1082) is a calendar day with no timezone. The default
+// parser turns it into a local Date, which shifts the day. Keep the raw string.
 pg.types.setTypeParser(1082, (val) => val);
-// ========================================================================
 
+// PGSSL:
+//   disable    - plain TCP (local Docker/dev Postgres)
+//   no-verify  - encrypted, certificate not checked (providers with self-signed certs)
+//   unset/any  - encrypted and verified (Neon, Supabase, RDS - the safe default)
+function sslConfig() {
+  const mode = (process.env.PGSSL || '').toLowerCase();
+  if (mode === 'disable' || mode === 'false' || mode === 'off') return false;
+  if (mode === 'no-verify') return { rejectUnauthorized: false };
+  return { rejectUnauthorized: true };
+}
 
-// This creates a connection "pool" using the DATABASE_URL environment variable.
-// This is compatible with services like Neon and Render.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  // Serverless Postgres counts connections tightly; keep the ceiling low and
+  // let idle ones go so a scaled-to-zero database isn't held open.
+  max: Number(process.env.PG_POOL_MAX || 8),
+  idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
+  // A cold start on a scale-to-zero tier can take several seconds.
+  connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 15000),
+  ssl: sslConfig(),
 });
 
-// We export an object with a 'query' function that all our controllers can use.
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle Postgres client:', err);
+});
+
 module.exports = {
   query: (text, params) => pool.query(text, params),
+  close: () => pool.end(),
 };
